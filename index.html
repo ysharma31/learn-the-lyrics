@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lyric Stand</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -44,7 +49,8 @@
   color-scheme: dark;
 }
 
-html, body { height: 100%; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--fg);
   font-family: var(--f-body); font-size: 15px; line-height: 1.45;
@@ -218,6 +224,28 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
 .linkrow { display: flex; gap: 8px; }
 .linkrow input { flex: 1; min-width: 0; }
 
+/* song finder */
+.finder { display: flex; flex-direction: column; gap: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.finder .seg { align-self: flex-start; background: var(--sheet); }
+.findrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.findrow input { flex: 1 1 180px; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--sheet); }
+.mic[aria-pressed="true"] { background: var(--live); border-color: var(--live); color: #fff; }
+.fstatus { font-size: 0.85rem; color: var(--muted); margin: 0; }
+.fstatus a { color: var(--accent); }
+.fstatus.err { color: var(--live); }
+.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.res { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+.res .rt { font-weight: 700; overflow-wrap: anywhere; }
+.res .rm { grid-column: 1; color: var(--muted); font-size: 0.82rem; overflow-wrap: anywhere; }
+.res .rm .tag { font-family: var(--f-mono); font-size: 0.7rem; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 4px; }
+.res button { grid-row: 1 / span 2; grid-column: 2; }
+.divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; letter-spacing: .06em; text-transform: uppercase; }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.row3 { display: grid; grid-template-columns: 1.4fr 1fr 0.6fr; gap: 12px; }
+.filled { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: var(--accent-soft); } }
+@media (max-width: 760px) { .row3 { grid-template-columns: 1fr 1fr; } }
+
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 0.88rem; z-index: 10; }
 
 .scrim { display: none; }
@@ -246,6 +274,8 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
   .rail, .ln, .countdown span { transition: none; animation: none; }
 }
 </style>
+</head>
+<body>
 
 <div class="app" id="app">
   <aside class="rail" aria-label="Song library">
@@ -328,9 +358,33 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
 <dialog id="editor">
   <form class="ed" id="edForm" method="dialog">
     <h3 id="edHeading">Add a song</h3>
+    <section class="finder" id="finder" aria-label="Find a song on the internet">
+      <div class="seg" role="group" aria-label="How to find the song">
+        <button type="button" data-find="title" aria-pressed="true">I know the title</button>
+        <button type="button" data-find="line" aria-pressed="false">I remember a line</button>
+      </div>
+      <div class="findrow" id="findTitleRow">
+        <input id="fTitle" placeholder="Song title, e.g. Tum Hi Ho" aria-label="Song title to search">
+        <input id="fArtist" placeholder="Artist (optional)" aria-label="Artist to search">
+        <button class="btn primary" type="button" id="fTitleBtn">Search</button>
+      </div>
+      <div class="findrow" id="findLineRow" hidden>
+        <input id="fLine" placeholder="Type or say a line you remember" aria-label="A line you remember">
+        <button class="btn mic" type="button" id="fMic" aria-pressed="false" hidden title="Say the line out loud">🎤 Say it</button>
+        <button class="btn primary" type="button" id="fLineBtn">Find song</button>
+      </div>
+      <p class="fstatus" id="fStatus" aria-live="polite">Search the internet for the lyrics, artist, singer and year.</p>
+      <ul class="results" id="fResults"></ul>
+    </section>
+    <div class="divider">Song details</div>
     <div class="row">
       <div class="field"><label for="edTitle">Song title</label><input id="edTitle" required maxlength="120"></div>
-      <div class="field"><label for="edArtist">Artist / film (optional)</label><input id="edArtist" maxlength="120"></div>
+      <div class="field"><label for="edArtist">Artist / composer</label><input id="edArtist" maxlength="120"></div>
+    </div>
+    <div class="row3">
+      <div class="field"><label for="edSinger">Singer(s)</label><input id="edSinger" maxlength="160"></div>
+      <div class="field"><label for="edAlbum">Album / film</label><input id="edAlbum" maxlength="120"></div>
+      <div class="field"><label for="edYear">Year</label><input id="edYear" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="2013"></div>
     </div>
     <div class="row">
       <div class="field"><label for="edLang">Language</label><select id="edLang"></select></div>
@@ -342,7 +396,7 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
     <div class="field">
       <label for="edLyrics">Lyrics</label>
       <textarea id="edLyrics" placeholder="Paste the lyrics here, one sung line per line.&#10;&#10;[Chorus]  ← lines in brackets become section labels (not numbered)&#10;Leave a blank line between verses."></textarea>
-      <p class="hint" id="edHint">Paste or drop a .txt or .lrc file. If you add a link, open it, copy the lyrics, and paste them here; the app keeps the link with the song so you can go back to it.</p>
+      <p class="hint" id="edHint">Found by the search above, or paste them yourself. You can also drop a .txt or .lrc file here.</p>
     </div>
     <div class="edactions">
       <button class="btn ghost danger" id="edDelete" type="button" hidden>Delete song</button>
@@ -434,7 +488,8 @@ const Store = {
     } catch { return false; }
   },
   async save(song) {
-    const body = { title: song.title, artist: song.artist, lang: song.lang, link: song.link, lyrics: song.lyrics, updatedAt: Date.now() };
+    const body = { title: song.title, artist: song.artist, singer: song.singer || "", album: song.album || "", year: song.year || "",
+      lang: song.lang, link: song.link, lyrics: song.lyrics, source: song.source || "", updatedAt: Date.now() };
     if (this.cloud) { await this.cloud.doc(song.id).set(body); return; }
     const list = this.readLocal().filter(s => s.id !== song.id);
     list.push({ ...body, id: song.id }); this.writeLocal(list);
@@ -541,6 +596,9 @@ function renderSong() {
   if (song.example) { const c = document.createElement("span"); c.className = "chip example"; c.textContent = "Example"; meta.append(c); }
   const lc = document.createElement("span"); lc.className = "chip"; lc.textContent = LANGS[song.lang]?.label ?? song.lang; meta.append(lc);
   if (song.artist) { const a = document.createElement("span"); a.textContent = song.artist; meta.append(a); }
+  if (song.singer && song.singer !== song.artist) { const a = document.createElement("span"); a.textContent = "Sung by " + song.singer; meta.append(a); }
+  if (song.album) { const a = document.createElement("span"); a.textContent = song.album; meta.append(a); }
+  if (song.year) { const a = document.createElement("span"); a.textContent = song.year; meta.append(a); }
   if (song.link) { const a = document.createElement("a"); a.href = song.link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Source ↗"; meta.append(a); }
 
   const { items, lines } = parse(song.lyrics);
@@ -602,7 +660,7 @@ function paint(scroll = true) {
     const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", "Stop repeating");
     x.onclick = () => { S.loop = null; paint(false); }; chip.append(x);
   }
-  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === S.mode)));
+  document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === S.mode)));
 }
 
 /* ---------------- Playback ---------------- */
@@ -816,12 +874,17 @@ Reply in 1-4 short sentences, plain text, no markdown headings. Do not write out
 }
 
 /* ---------------- Editor ---------------- */
-let editingId = null, langTouched = false;
+let editingId = null, langTouched = false, editSource = "";
 function openEditor(song) {
   editingId = song && !song.example ? song.id : null;
   $("edHeading").textContent = editingId ? "Edit song" : song ? "Save a copy of this example" : "Add a song";
   $("edTitle").value = song?.title ?? "";
   $("edArtist").value = song?.example ? "" : (song?.artist ?? "");
+  $("edSinger").value = song?.singer ?? "";
+  $("edAlbum").value = song?.album ?? "";
+  $("edYear").value = song?.year ?? "";
+  editSource = song?.source ?? "";
+  resetFinder(!song);
   $("edLang").value = song?.lang ?? "en";
   $("edLink").value = song?.link ?? "";
   $("edLyrics").value = song?.lyrics ?? "";
@@ -843,6 +906,10 @@ async function saveEditor() {
     id: editingId || "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     title: $("edTitle").value.trim() || "Untitled",
     artist: $("edArtist").value.trim(),
+    singer: $("edSinger").value.trim(),
+    album: $("edAlbum").value.trim(),
+    year: ($("edYear").value.match(/\d{4}/) || [""])[0],
+    source: editSource,
     lang: $("edLang").value,
     link: $("edLink").value.trim(),
     lyrics, updatedAt: Date.now(),
@@ -862,6 +929,253 @@ async function deleteCurrent() {
   $("editor").close();
   selectSong(S.songs[0]?.id ?? null); renderList(); toast("Deleted");
 }
+
+/* ---------------- Finding songs on the internet ----------------
+   Lyrics come from LRCLIB (lrclib.net), a free, open lyrics database. Year and credits come from
+   MusicBrainz. Claude (when the page is opened on claude.ai) recognises a song from a remembered
+   line and fills in singers and year; it never writes lyrics itself. */
+const LRCLIB = "https://lrclib.net/api";
+const MB = "https://musicbrainz.org/ws/2";
+let findCtl = null, recog = null;
+
+async function getJSON(url, signal) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 12000);
+  signal?.addEventListener("abort", () => ctl.abort());
+  try {
+    const r = await fetch(url, { signal: ctl.signal, headers: { Accept: "application/json" } });
+    if (!r.ok) throw Object.assign(new Error("HTTP " + r.status), { status: r.status });
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function claudeSample() {
+  if (!window.claude || typeof window.claude.use !== "function") return null;
+  return window.claude.use("sample").catch(() => null);
+}
+const norm = s => String(s || "").toLowerCase().normalize("NFKD").replace(/\(.*?\)|\[.*?\]|feat\..*$|ft\..*$/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const plainFromSynced = s => String(s || "").split("\n").map(l => l.replace(/^\s*(?:\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*)+/, "")).join("\n").trim();
+const fmtDur = s => s ? Math.floor(s / 60) + ":" + String(Math.round(s % 60)).padStart(2, "0") : "";
+function webSearchLink(title, artist) {
+  return "https://www.google.com/search?q=" + encodeURIComponent(`${title} ${artist || ""} lyrics`.trim());
+}
+
+function setStatus(msg, { err = false, link = null } = {}) {
+  const p = $("fStatus"); p.textContent = msg; p.classList.toggle("err", err);
+  if (link) { p.append(" "); const a = document.createElement("a"); a.href = link.href; a.target = "_blank"; a.rel = "noopener"; a.textContent = link.text; p.append(a); }
+}
+function resetFinder(show) {
+  findCtl?.abort(); stopMic();
+  $("finder").hidden = !show;
+  $("fResults").textContent = "";
+  $("fTitle").value = $("fArtist").value = $("fLine").value = "";
+  setStatus("Search the internet for the lyrics, artist, singer and year.");
+}
+function setFindMode(m) {
+  document.querySelectorAll("[data-find]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.find === m)));
+  $("findTitleRow").hidden = m !== "title"; $("findLineRow").hidden = m !== "line";
+  $("fResults").textContent = "";
+  setStatus(m === "title" ? "Search the internet for the lyrics, artist, singer and year." : "Type or say any line you remember. Claude will work out which song it is.");
+  (m === "title" ? $("fTitle") : $("fLine")).focus();
+}
+
+/* LRCLIB rows -> one candidate per distinct song (title + artist) */
+function lrclibCandidates(rows) {
+  const by = new Map();
+  for (const r of rows || []) {
+    const lyrics = r.plainLyrics || plainFromSynced(r.syncedLyrics);
+    if (r.instrumental || !lyrics) continue;
+    const key = norm(r.trackName) + "|" + norm(r.artistName);
+    const c = { title: r.trackName, artist: r.artistName, album: r.albumName || "", duration: r.duration, lyrics, source: "LRCLIB" };
+    const prev = by.get(key);
+    if (!prev || lyrics.length > prev.lyrics.length) by.set(key, c);
+  }
+  return [...by.values()];
+}
+async function lrclibSearch({ title, artist, q }, signal) {
+  const p = new URLSearchParams();
+  if (q) p.set("q", q); else { p.set("track_name", title); if (artist) p.set("artist_name", artist); }
+  return lrclibCandidates(await getJSON(`${LRCLIB}/search?${p}`, signal));
+}
+
+async function searchByTitle() {
+  const title = $("fTitle").value.trim(), artist = $("fArtist").value.trim();
+  if (!title) { setStatus("Type a song title first.", { err: true }); $("fTitle").focus(); return; }
+  findCtl?.abort(); findCtl = new AbortController(); const signal = findCtl.signal;
+  $("fResults").textContent = ""; setStatus(`Searching for “${title}”…`);
+  let cands = null, netErr = false;
+  try {
+    cands = await lrclibSearch({ title, artist }, signal);
+    if (!cands.length && artist) cands = await lrclibSearch({ title }, signal);
+  } catch (e) { if (signal.aborted) return; netErr = true; }
+  if (signal.aborted) return;
+
+  if (netErr) {
+    // The lyrics site couldn't be reached (on claude.ai the page is not allowed to go online).
+    const sample = await claudeSample();
+    if (sample) {
+      setStatus("Can't reach the lyrics site from here. Asking Claude which song you mean…");
+      const ids = await identifyWithClaude({ title, artist }, signal);
+      if (signal.aborted) return;
+      if (ids?.length) { showResults(ids, "Pick your song. Claude will fill in the details; paste the lyrics from the web."); return; }
+    }
+    setStatus("Couldn't reach the lyrics site. Paste the lyrics yourself:", { err: true, link: { href: webSearchLink(title, artist), text: "Search the web ↗" } });
+    if (!$("edTitle").value) fill("edTitle", title);
+    return;
+  }
+  if (!cands.length) {
+    setStatus(`No lyrics found for “${title}”. Check the spelling, add the artist, or try “I remember a line”.`, { err: true, link: { href: webSearchLink(title, artist), text: "Search the web ↗" } });
+    return;
+  }
+  if (cands.length === 1) { choose(cands[0]); return; }
+  showResults(cands.slice(0, 12), `${cands.length} songs called “${title}”. Which one do you mean?`);
+}
+
+async function searchByLine() {
+  const line = $("fLine").value.trim();
+  if (line.split(/\s+/).length < 3) { setStatus("Give at least three or four words of the line.", { err: true }); $("fLine").focus(); return; }
+  findCtl?.abort(); findCtl = new AbortController(); const signal = findCtl.signal;
+  $("fResults").textContent = ""; setStatus("Working out which song that line is from…");
+  let cands = [];
+  const sample = await claudeSample();
+  if (sample) cands = (await identifyWithClaude({ line }, signal)) || [];
+  if (signal.aborted) return;
+  if (!cands.length) {
+    // Without Claude, fall back to the lyrics site's keyword search.
+    try { cands = (await lrclibSearch({ q: line }, signal)).slice(0, 8); } catch { if (signal.aborted) return; }
+  }
+  if (signal.aborted) return;
+  if (!cands.length) {
+    setStatus(sample ? "Couldn't place that line. Try another line, or a few more words." : "Couldn't place that line. Recognising a song from a line works best when this page is opened on claude.ai.",
+      { err: true, link: { href: "https://www.google.com/search?q=" + encodeURIComponent(`"${line}" lyrics`), text: "Search the web ↗" } });
+    return;
+  }
+  showResults(cands, cands.length === 1 ? "Is this the song?" : "Which of these is it?");
+}
+
+/* Claude names candidate songs: metadata only, never lyrics. */
+async function identifyWithClaude({ title, artist, line }, signal) {
+  const sample = await claudeSample(); if (!sample) return null;
+  const ask = line
+    ? `A singer remembers this line from a song (it may be misremembered, in English, Hindi, or Hindi written in Roman letters):\n"${line}"\nWhich song or songs could it be?`
+    : `Which songs are called "${title}"${artist ? ` (artist hint: ${artist})` : ""}? Include well-known songs that share the title, e.g. Bollywood songs and Western songs.`;
+  try {
+    const res = await sample.json(`${ask}
+Reply with only a JSON array (most likely first, at most 5) of objects:
+{"title": string, "artist": string (band, or music composer for film songs), "singers": string (comma-separated vocalists), "album": string (album or film), "year": number|null, "language": "en"|"hi"|"other", "confidence": "high"|"medium"|"low"}
+Use [] if you don't know. Never include any lyrics.`, { signal, modelTier: "default" });
+    if (!Array.isArray(res)) return [];
+    return res.filter(r => r && r.title).slice(0, 5).map(r => ({
+      title: String(r.title), artist: String(r.artist || ""), singer: String(r.singers || ""), album: String(r.album || ""),
+      year: r.year ? String(r.year) : "", lang: LANGS[r.language] ? r.language : "", confidence: r.confidence, source: "Claude",
+    }));
+  } catch (e) {
+    if (e?.code === "cancelled") return null;
+    if (e?.code === "not_granted") setStatus("Asking Claude is turned off for this page.", { err: true });
+    return [];
+  }
+}
+
+function showResults(cands, msg) {
+  setStatus(msg);
+  const ul = $("fResults"); ul.textContent = "";
+  for (const c of cands) {
+    const li = document.createElement("li"); li.className = "res";
+    const t = document.createElement("span"); t.className = "rt"; t.textContent = c.title;
+    const m = document.createElement("span"); m.className = "rm";
+    const bits = [c.artist, c.singer && c.singer !== c.artist ? "sung by " + c.singer : "", c.album, c.year, fmtDur(c.duration)].filter(Boolean);
+    if (c.confidence === "low") { const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = "maybe"; m.append(tg); }
+    m.append(bits.join(" · "));
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.textContent = "Use this";
+    b.onclick = () => choose(c);
+    li.append(t, m, b); ul.append(li);
+  }
+}
+
+function fill(id, value, { onlyIfEmpty = false } = {}) {
+  const el = $(id); if (!value || (onlyIfEmpty && el.value.trim())) return false;
+  el.value = value; el.classList.remove("filled"); void el.offsetWidth; el.classList.add("filled"); return true;
+}
+
+async function choose(c) {
+  findCtl?.abort(); findCtl = new AbortController(); const signal = findCtl.signal;
+  $("fResults").textContent = "";
+  fill("edTitle", c.title); fill("edArtist", c.artist); fill("edAlbum", c.album);
+  fill("edSinger", c.singer); fill("edYear", c.year);
+  if (c.lang) { $("edLang").value = c.lang; $("edLyrics").lang = c.lang; }
+  setStatus(`Getting the lyrics and details for “${c.title}”…`);
+
+  // 1. Lyrics
+  let lyrics = c.lyrics || "", lyricsNote = "";
+  if (!lyrics) {
+    try {
+      const found = await lrclibSearch({ title: c.title, artist: c.artist || c.singer?.split(",")[0] }, signal);
+      const best = found.find(f => norm(f.title) === norm(c.title)) || found[0];
+      if (best) { lyrics = best.lyrics; if (!c.album) fill("edAlbum", best.album, { onlyIfEmpty: true }); }
+    } catch { if (signal.aborted) return; lyricsNote = "offline"; }
+  }
+  if (signal.aborted) return;
+  if (lyrics) {
+    $("edLyrics").value = lyrics; fill("edLyrics", lyrics);
+    if (!c.lang) { $("edLang").value = detectLang(lyrics); $("edLyrics").lang = $("edLang").value; }
+    langTouched = true; editSource = "LRCLIB";
+  }
+
+  // 2. Year and credits (MusicBrainz first; Claude fills any gaps)
+  const [mb, cl] = await Promise.all([musicBrainzInfo(c, signal), (!c.singer || !c.year) && c.source !== "Claude" ? claudeDetails(c, signal) : null]);
+  if (signal.aborted) return;
+  const year = c.year || cl?.year || mb?.year || "";
+  fill("edYear", year, { onlyIfEmpty: true });
+  fill("edSinger", cl?.singer || mb?.artist || c.artist, { onlyIfEmpty: true });
+  fill("edAlbum", cl?.album, { onlyIfEmpty: true });
+  if (cl?.artist && !$("edArtist").value) fill("edArtist", cl.artist);
+
+  const sources = [lyrics ? "lyrics from LRCLIB" : "", mb?.year || mb?.artist ? "release info from MusicBrainz" : "", c.source === "Claude" || cl ? "credits suggested by Claude" : ""].filter(Boolean);
+  if (lyrics) setStatus(`Filled in: ${sources.join(", ")}. Check the details, then save.`);
+  else setStatus(lyricsNote === "offline" ? "Filled in the song details. The lyrics site can't be reached from here, so paste the lyrics:" : "Filled in the song details, but no lyrics were found online. Paste them:",
+    { err: true, link: { href: webSearchLink(c.title, c.artist || c.singer), text: "Search the web ↗" } });
+  if (!$("edLink").value && !lyrics) { $("edLink").value = webSearchLink(c.title, c.artist || c.singer); syncLink(); }
+}
+
+async function musicBrainzInfo(c, signal) {
+  try {
+    const q = `recording:"${c.title.replace(/"/g, "")}"` + (c.artist ? ` AND artist:"${c.artist.replace(/"/g, "")}"` : "");
+    const data = await getJSON(`${MB}/recording?fmt=json&limit=15&query=${encodeURIComponent(q)}`, signal);
+    const credit = r => (r["artist-credit"] || []).map(a => a.name + (a.joinphrase || "")).join("").trim();
+    const who = norm(c.artist || c.singer);
+    const recs = (data.recordings || []).filter(r => norm(r.title) === norm(c.title) && (r.score ?? 100) >= 80
+      && (!who || norm(credit(r)).includes(who) || who.includes(norm(credit(r)))));
+    if (!recs.length) return null;
+    const years = recs.map(r => parseInt((r["first-release-date"] || "").slice(0, 4), 10)).filter(y => y > 1900);
+    return { year: years.length ? String(Math.min(...years)) : "", artist: credit(recs[0]) };
+  } catch { return null; }
+}
+async function claudeDetails(c, signal) {
+  const sample = await claudeSample(); if (!sample) return null;
+  try {
+    const r = await sample.json(`Song: "${c.title}" by ${c.artist || "unknown artist"}${c.album ? `, from "${c.album}"` : ""}.
+Reply with only a JSON object: {"artist": string (band, or music composer for a film song), "singers": string (comma-separated vocalists), "album": string (album or film), "year": number|null (original release year)}.
+Use "" or null for anything you are not sure of. Never include lyrics.`, { signal, modelTier: "quick" });
+    return r && typeof r === "object" ? { artist: String(r.artist || ""), singer: String(r.singers || ""), album: String(r.album || ""), year: r.year ? String(r.year) : "" } : null;
+  } catch { return null; }
+}
+
+/* Saying a line out loud (browsers with speech recognition; not available inside claude.ai) */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function startMic() {
+  if (!SR) return;
+  recog = new SR();
+  recog.lang = $("edLang").value === "hi" ? "hi-IN" : "en-IN";
+  recog.interimResults = true; recog.maxAlternatives = 1;
+  recog.onresult = e => { $("fLine").value = Array.from(e.results).map(r => r[0].transcript).join(" "); };
+  recog.onerror = e => {
+    setStatus(e.error === "not-allowed" || e.error === "service-not-allowed" ? "The microphone isn't available here. Type the line instead." : "Didn't catch that. Try again or type the line.", { err: true });
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") $("fMic").hidden = true;
+  };
+  recog.onend = () => { $("fMic").setAttribute("aria-pressed", "false"); recog = null; if ($("fLine").value.trim()) searchByLine(); };
+  $("fMic").setAttribute("aria-pressed", "true"); setStatus("Listening… sing or say the line.");
+  try { recog.start(); } catch { stopMic(); }
+}
+function stopMic() { try { recog?.stop(); } catch {} $("fMic").setAttribute("aria-pressed", "false"); }
 
 /* ---------------- Misc ---------------- */
 let toastT;
@@ -885,6 +1199,14 @@ for (const [k, v] of Object.entries(LANGS)) { const o = document.createElement("
 $("addBtn").onclick = () => openEditor(null);
 $("editBtn").onclick = () => openEditor(currentSong());
 $("edCancel").onclick = () => $("editor").close();
+$("editor").addEventListener("close", () => { findCtl?.abort(); stopMic(); });
+document.querySelectorAll("[data-find]").forEach(b => b.onclick = () => setFindMode(b.dataset.find));
+$("fTitleBtn").onclick = searchByTitle;
+$("fLineBtn").onclick = searchByLine;
+$("fMic").hidden = !SR;
+$("fMic").onclick = () => recog ? stopMic() : startMic();
+for (const [id, fn] of [["fTitle", searchByTitle], ["fArtist", searchByTitle], ["fLine", searchByLine]])
+  $(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fn(); } });
 $("edDelete").onclick = deleteCurrent;
 $("edForm").addEventListener("submit", e => { e.preventDefault(); $("editor").close(); saveEditor(); });
 $("edLink").addEventListener("input", syncLink);
@@ -912,7 +1234,7 @@ $("prevBtn").onclick = () => goTo(S.cur, { keepPlaying: true });
 $("nextBtn").onclick = () => goTo(S.cur + 2, { keepPlaying: true });
 $("autoToggle").onchange = e => setAuto(e.target.checked);
 $("speed").oninput = e => setPace(+e.target.value);
-document.querySelectorAll(".seg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => setMode(b.dataset.mode));
 $("smaller").onclick = () => setSize(S.size - 0.2);
 $("bigger").onclick = () => setSize(S.size + 0.2);
 $("menuBtn").onclick = () => $("app").classList.add("drawer");
@@ -958,3 +1280,5 @@ Store.connect(mine => {
 });
 })();
 </script>
+</body>
+</html>
