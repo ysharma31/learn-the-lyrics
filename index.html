@@ -1,0 +1,960 @@
+<title>Lyric Stand</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=Mukta:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a music stand. Library rail on the left (drawer on phones), the lyric sheet fills the
+   middle and scrolls like a teleprompter, transport bar pinned to the bottom, ask box above it. */
+:root {
+  --bg: #eef0f4;          /* stand paper, cool */
+  --sheet: #fbfbfd;
+  --fg: #1d1b2e;          /* ink */
+  --muted: #6b6880;
+  --faint: #c9c7d6;
+  --line: #dddbe6;
+  --accent: #6a3fd1;      /* conductor violet */
+  --accent-soft: #e9e2fb;
+  --accent-ink: #ffffff;
+  --live: #d6336c;        /* the line you are singing */
+  --live-soft: #fde4ec;
+  --ok: #2b8a57;
+
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --f-deva: "Mukta", "Noto Sans Devanagari", "Nirmala UI", "Kohinoor Devanagari", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --lyric-size: 1.6rem;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14121d; --sheet: #1b1927; --fg: #ece9f7; --muted: #9a96b2; --faint: #4a4660;
+    --line: #2d2a3d; --accent: #a88bff; --accent-soft: #2c2448; --accent-ink: #14121d;
+    --live: #ff7aa8; --live-soft: #3a1d2b; --ok: #5cc98e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14121d; --sheet: #1b1927; --fg: #ece9f7; --muted: #9a96b2; --faint: #4a4660;
+  --line: #2d2a3d; --accent: #a88bff; --accent-soft: #2c2448; --accent-ink: #14121d;
+  --live: #ff7aa8; --live-soft: #3a1d2b; --ok: #5cc98e;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.45;
+  overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* ---------- Library rail ---------- */
+.rail {
+  background: var(--sheet);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: 16px;
+  padding-block: 18px 12px;
+  gap: 14px;
+}
+.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.brand h1 {
+  font-family: var(--f-display); font-weight: 700; font-size: 1.45rem; letter-spacing: -0.02em; margin: 0;
+}
+.brand h1 span { color: var(--accent); }
+.brand small { color: var(--muted); font-size: 0.75rem; }
+.btn {
+  border: 1px solid var(--line); background: var(--sheet); border-radius: 8px;
+  padding: 7px 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn:disabled { opacity: .45; cursor: default; }
+.songs { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; flex: 1; }
+.songs .grp { font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 8px 4px; }
+.song {
+  width: 100%; text-align: left; border: 0; background: transparent; border-radius: 8px;
+  padding: 8px 10px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2px 8px;
+}
+.song:hover { background: var(--bg); }
+.song[aria-current="true"] { background: var(--accent-soft); }
+.song .t { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song .a { color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; grid-column: 1; }
+.song .lang { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-family: var(--f-mono); font-size: 0.7rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+.store-note { font-size: 0.75rem; color: var(--muted); }
+
+/* ---------- Main ---------- */
+.main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.songbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-block: 14px 10px;
+  padding-left: 24px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line);
+}
+.songbar .menu { display: none; }
+.songtitle { min-width: 0; flex: 1; }
+.songtitle h2 { font-family: var(--f-display); font-weight: 700; font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.songtitle p { margin: 0; color: var(--muted); font-size: 0.85rem; display: flex; gap: 10px; flex-wrap: wrap; }
+.songtitle a { color: var(--accent); }
+.chip { font-family: var(--f-mono); font-size: 0.72rem; border-radius: 999px; padding: 2px 8px; background: var(--accent-soft); color: var(--fg); }
+.chip.example { background: var(--live-soft); }
+
+.stagewrap { position: relative; flex: 1; min-height: 0; }
+.stage {
+  position: absolute; inset: 0; overflow-y: auto; scroll-behavior: smooth;
+  padding-left: 24px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.stage.following { scrollbar-width: none; }
+.sheet { max-width: 820px; margin: 0 auto; padding-block: 34vh 46vh; }
+.stage:not(.following) .sheet { padding-block: 24px 30vh; }
+.fade { position: absolute; left: 0; right: 0; height: 70px; pointer-events: none; z-index: 1; }
+.fade.top { top: 0; background: linear-gradient(var(--bg), transparent); }
+.fade.bot { bottom: 0; background: linear-gradient(transparent, var(--bg)); }
+
+.ln {
+  display: grid; grid-template-columns: 3.2ch minmax(0, 1fr); gap: 0 18px; align-items: baseline;
+  padding: 6px 10px; border-radius: var(--radius); cursor: pointer; position: relative;
+  transition: opacity .25s, background-color .25s;
+}
+.ln .num { font-family: var(--f-mono); font-size: 0.8rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.ln .tx { font-size: var(--lyric-size); line-height: 1.35; overflow-wrap: anywhere; }
+.ln[lang="hi"] .tx { font-family: var(--f-deva); line-height: 1.5; }
+.stage.following .ln { opacity: .38; }
+.stage.following .ln.near { opacity: .62; }
+.ln.active { background: var(--live-soft); opacity: 1 !important; }
+.ln.active .num { color: var(--live); font-weight: 500; }
+.ln.inloop { box-shadow: inset 3px 0 0 var(--accent); }
+.ln:hover:not(.active) { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+.ln .bar { position: absolute; left: 10px; right: 10px; bottom: 2px; height: 3px; border-radius: 2px; background: var(--live); transform-origin: left; transform: scaleX(0); }
+.ln.active.timing .bar { animation: fill var(--dur, 4s) linear forwards; }
+.paused .ln.active.timing .bar { animation-play-state: paused; }
+@keyframes fill { to { transform: scaleX(1); } }
+
+.sec { font-family: var(--f-display); font-size: 0.78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); padding: 18px 10px 4px calc(3.2ch + 28px); }
+.gap { height: 18px; }
+
+/* memorise modes */
+.mode-initials .ln:not(.peek) .tx .w { color: transparent; position: relative; }
+.mode-initials .ln:not(.peek) .tx .w::before { content: attr(data-i); color: var(--fg); position: absolute; left: 0; }
+.mode-initials .ln:not(.peek) .tx .w::after { content: ""; position: absolute; left: 0; right: 0; bottom: .15em; border-bottom: 2px dotted var(--faint); }
+.mode-hidden .ln:not(.peek) .tx { filter: blur(9px); user-select: none; }
+.mode-hidden .ln:not(.peek) .tx, .mode-initials .ln:not(.peek) .tx { cursor: help; }
+
+.empty { max-width: 520px; margin: 14vh auto 0; text-align: center; color: var(--muted); }
+.empty h3 { font-family: var(--f-display); color: var(--fg); font-size: 1.3rem; margin: 0 0 6px; }
+
+.countdown {
+  position: absolute; inset: 0; display: grid; place-items: center; z-index: 3; pointer-events: none;
+  font-family: var(--f-display); font-weight: 700; font-size: 7rem; color: var(--live);
+}
+.countdown span { animation: pop .9s ease-out both; }
+@keyframes pop { from { transform: scale(1.4); opacity: 0; } 30% { opacity: 1; } to { transform: scale(.9); opacity: .2; } }
+
+/* ---------- Ask + transport ---------- */
+.dock {
+  border-top: 1px solid var(--line); background: var(--sheet);
+  padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-left: 24px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 10px;
+}
+.answer { font-size: 0.92rem; max-height: 9.5em; overflow-y: auto; white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 8px 12px; }
+.answer .who { font-size: 0.7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: block; }
+.ask { display: flex; gap: 8px; }
+.ask input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; background: var(--bg); }
+.ask input::placeholder { color: var(--muted); }
+.transport { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.group { display: flex; align-items: center; gap: 6px; }
+.round { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); background: var(--sheet); display: grid; place-items: center; padding: 0; }
+.round.play { width: 50px; height: 50px; background: var(--live); border-color: var(--live); color: #fff; }
+.round:disabled { opacity: .4; cursor: default; }
+.round svg { width: 20px; height: 20px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.toggle input { appearance: none; width: 38px; height: 22px; border-radius: 11px; background: var(--faint); position: relative; margin: 0; cursor: pointer; transition: background .2s; }
+.toggle input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--sheet); transition: transform .2s; }
+.toggle input:checked { background: var(--accent); }
+.toggle input:checked::after { transform: translateX(16px); }
+.lbl { font-size: 0.72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.speed input { width: 110px; accent-color: var(--accent); }
+.speed output { font-family: var(--f-mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; min-width: 5.5ch; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 0.82rem; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.loopchip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; background: var(--accent-soft); border-radius: 999px; padding: 3px 4px 3px 10px; }
+.loopchip button { border: 0; background: transparent; padding: 0 6px; }
+.spacer { flex: 1; }
+
+/* ---------- Editor dialog ---------- */
+dialog {
+  border: 1px solid var(--line); border-radius: 14px; background: var(--sheet); color: var(--fg);
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 40px); padding: 0;
+}
+dialog::backdrop { background: rgb(10 8 20 / .45); }
+.ed { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+.ed h3 { font-family: var(--f-display); margin: 0; font-size: 1.3rem; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 0.78rem; color: var(--muted); }
+.field input, .field select, .field textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+.field textarea { min-height: 260px; resize: vertical; line-height: 1.5; }
+.field textarea[lang="hi"] { font-family: var(--f-deva); }
+.hint { font-size: 0.78rem; color: var(--muted); margin: 0; }
+.edactions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.edactions .danger { color: var(--live); margin-right: auto; }
+.linkrow { display: flex; gap: 8px; }
+.linkrow input { flex: 1; min-width: 0; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 0.88rem; z-index: 10; }
+
+.scrim { display: none; }
+
+/* ---------- Phone ---------- */
+@media (max-width: 760px) {
+  :root { --lyric-size: 1.3rem; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .rail {
+    position: fixed; top: 0; bottom: 0; left: 0; width: min(86vw, 320px); z-index: 20;
+    transform: translateX(-102%); transition: transform .25s; box-shadow: 0 0 40px rgb(0 0 0 / .25);
+    padding-top: calc(18px + env(safe-area-inset-top, 0px));
+  }
+  .app.drawer .rail { transform: none; }
+  .app.drawer .scrim { display: block; position: fixed; inset: 0; z-index: 15; background: rgb(10 8 20 / .4); }
+  .songbar .menu { display: inline-flex; }
+  .songbar, .stage, .dock { padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+  .ln { grid-template-columns: 2.6ch minmax(0, 1fr); gap: 0 10px; padding: 5px 6px; }
+  .sec { padding-left: calc(2.6ch + 16px); }
+  .speed input { width: 84px; }
+  .row { grid-template-columns: 1fr; }
+  .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage { scroll-behavior: auto; }
+  .rail, .ln, .countdown span { transition: none; animation: none; }
+}
+</style>
+
+<div class="app" id="app">
+  <aside class="rail" aria-label="Song library">
+    <div class="brand">
+      <h1>Lyric <span>Stand</span></h1>
+      <button class="btn primary" id="addBtn" type="button">+ Add song</button>
+    </div>
+    <ul class="songs" id="songList"></ul>
+    <p class="store-note" id="storeNote">Songs are saved in this browser.</p>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="songbar">
+      <button class="btn menu" id="menuBtn" type="button" aria-label="Open song library">☰ Songs</button>
+      <div class="songtitle">
+        <h2 id="songTitle">—</h2>
+        <p id="songMeta"></p>
+      </div>
+      <button class="btn" id="editBtn" type="button">Edit</button>
+      <div class="group hide-sm" title="Text size">
+        <button class="btn ghost" id="smaller" type="button" aria-label="Smaller text">A−</button>
+        <button class="btn ghost" id="bigger" type="button" aria-label="Bigger text">A+</button>
+      </div>
+    </header>
+
+    <div class="stagewrap">
+      <div class="fade top" id="fadeTop"></div>
+      <div class="stage" id="stage" tabindex="0" aria-label="Lyrics">
+        <div class="sheet" id="sheet"></div>
+      </div>
+      <div class="fade bot" id="fadeBot"></div>
+      <div class="countdown" id="countdown" hidden></div>
+    </div>
+
+    <section class="dock">
+      <div class="answer" id="answer" hidden></div>
+      <form class="ask" id="askForm" autocomplete="off">
+        <input id="askInput" type="text" placeholder="Ask or tell it: “restart”, “start from line 9”, “revise lines 5–8”, “go to the chorus”, “what does line 3 mean?”" aria-label="Ask a question or give a command">
+        <button class="btn" type="submit" id="askBtn">Ask</button>
+      </form>
+      <div class="transport">
+        <div class="group">
+          <button class="round" id="restartBtn" type="button" title="Restart from line 1 (R)" aria-label="Restart">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          </button>
+          <button class="round" id="prevBtn" type="button" title="Previous line (↑)" aria-label="Previous line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg>
+          </button>
+          <button class="round play" id="playBtn" type="button" title="Play / pause (Space)" aria-label="Play">
+            <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="round" id="nextBtn" type="button" title="Next line (↓)" aria-label="Next line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+        </div>
+        <label class="toggle" title="When on, the lyrics move by themselves and keep the current line in the middle">
+          <input type="checkbox" id="autoToggle" checked>
+          <span>Auto-scroll</span>
+        </label>
+        <div class="group speed" title="How long each line stays before moving on">
+          <span class="lbl">Pace</span>
+          <input type="range" id="speed" min="1.5" max="12" step="0.5" value="4" aria-label="Seconds per line">
+          <output id="speedOut">4.0 s/line</output>
+        </div>
+        <div class="group">
+          <span class="lbl hide-sm">Practise</span>
+          <div class="seg" role="group" aria-label="Memorise mode">
+            <button type="button" data-mode="full" aria-pressed="true">Full</button>
+            <button type="button" data-mode="initials" aria-pressed="false" title="Show only the first letter of each word">First letters</button>
+            <button type="button" data-mode="hidden" aria-pressed="false" title="Hide every line; tap a line to peek">Hidden</button>
+          </div>
+        </div>
+        <span class="loopchip" id="loopChip" hidden></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="editor">
+  <form class="ed" id="edForm" method="dialog">
+    <h3 id="edHeading">Add a song</h3>
+    <div class="row">
+      <div class="field"><label for="edTitle">Song title</label><input id="edTitle" required maxlength="120"></div>
+      <div class="field"><label for="edArtist">Artist / film (optional)</label><input id="edArtist" maxlength="120"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label for="edLang">Language</label><select id="edLang"></select></div>
+      <div class="field">
+        <label for="edLink">Link to the lyrics (optional)</label>
+        <div class="linkrow"><input id="edLink" type="url" placeholder="https://…"><a class="btn" id="edOpen" href="#" target="_blank" rel="noopener" hidden>Open ↗</a></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="edLyrics">Lyrics</label>
+      <textarea id="edLyrics" placeholder="Paste the lyrics here, one sung line per line.&#10;&#10;[Chorus]  ← lines in brackets become section labels (not numbered)&#10;Leave a blank line between verses."></textarea>
+      <p class="hint" id="edHint">Paste or drop a .txt or .lrc file. If you add a link, open it, copy the lyrics, and paste them here; the app keeps the link with the song so you can go back to it.</p>
+    </div>
+    <div class="edactions">
+      <button class="btn ghost danger" id="edDelete" type="button" hidden>Delete song</button>
+      <button class="btn" type="button" id="edCancel">Cancel</button>
+      <button class="btn primary" type="submit" id="edSave">Save song</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------------- Languages (add more here later) ---------------- */
+const LANGS = {
+  en: { label: "English", short: "EN", script: /[A-Za-z]/ },
+  hi: { label: "Hindi · हिन्दी", short: "HI", script: /[ऀ-ॿ]/ },
+};
+function detectLang(text) {
+  const deva = (text.match(/[ऀ-ॿ]/g) || []).length;
+  const latin = (text.match(/[A-Za-z]/g) || []).length;
+  return deva > latin * 0.3 ? "hi" : "en";
+}
+
+/* ---------------- Built-in examples (original lyrics written for this app) ---------------- */
+const EXAMPLES = [
+  { id: "ex-en", example: true, title: "Paper Boats", artist: "Example song", lang: "en", link: "",
+    lyrics: `[Verse 1]
+We folded paper boats in the rain
+Sent them down the gutter lane
+Every one a promise made
+Every one a little brave
+
+[Chorus]
+Sail on, sail on
+Past the corner, past the dawn
+If the water carries you
+I'll be waiting where you've gone
+
+[Verse 2]
+Now the streets are dry and wide
+Still I check the riverside
+For a corner, for a fold
+For a story never told
+
+[Chorus]
+Sail on, sail on
+Past the corner, past the dawn
+If the water carries you
+I'll be waiting where you've gone` },
+  { id: "ex-hi", example: true, title: "शाम की चाय", artist: "Example song", lang: "hi", link: "",
+    lyrics: `[मुखड़ा]
+शाम ढली है, चाय बनी है
+खिड़की पे बारिश की धुन बजी है
+तुम जो आओ तो बात बने
+वरना ये प्याली भी अनमनी है
+
+[अंतरा]
+गली के मोड़ पे दीप जले
+यादों के छोटे से गाँव चले
+हर इक घूँट में कहानी है
+हर इक कहानी में तुम मिले
+
+[मुखड़ा]
+शाम ढली है, चाय बनी है
+खिड़की पे बारिश की धुन बजी है` },
+];
+
+/* ---------------- Storage: Claude account store when available, else this browser ---------------- */
+const LS_KEY = "lyricstand.songs.v1";
+const Store = {
+  cloud: null, uid: null,
+  readLocal() { try { return JSON.parse(localStorage.getItem(LS_KEY) || "[]"); } catch { return []; } },
+  writeLocal(list) { try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch {} },
+  async connect(onChange) {
+    if (!window.claude || typeof window.claude.use !== "function") return false;
+    try {
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      if (!db || !user) return false;
+      const uid = await user.id();
+      if (!uid) return false;
+      this.cloud = db.collection("data/users/" + uid); this.uid = uid;
+      this.cloud.onSnapshot(snap => {
+        onChange(snap.docs.filter(d => d.exists).map(d => ({ ...d.data(), id: d.id })));
+      }, () => {});
+      return true;
+    } catch { return false; }
+  },
+  async save(song) {
+    const body = { title: song.title, artist: song.artist, lang: song.lang, link: song.link, lyrics: song.lyrics, updatedAt: Date.now() };
+    if (this.cloud) { await this.cloud.doc(song.id).set(body); return; }
+    const list = this.readLocal().filter(s => s.id !== song.id);
+    list.push({ ...body, id: song.id }); this.writeLocal(list);
+  },
+  async remove(id) {
+    if (this.cloud) { await this.cloud.doc(id).delete(); return; }
+    this.writeLocal(this.readLocal().filter(s => s.id !== id));
+  },
+};
+
+/* ---------------- State ---------------- */
+const S = {
+  songs: [], currentId: null,
+  items: [],       // parsed rows: {kind:'line'|'sec'|'gap', text, n}
+  lines: [],       // indexes into items for numbered lines
+  cur: 0,          // index into lines (0-based)
+  playing: false, auto: true, pace: 4, mode: "full",
+  loop: null,      // {from, to} 1-based line numbers
+  size: 1.6,
+};
+let timer = null, countdownTimer = null, wakeLock = null;
+
+const $ = id => document.getElementById(id);
+const stage = $("stage"), sheet = $("sheet");
+
+function prefs(save) {
+  try {
+    if (save) localStorage.setItem("lyricstand.prefs", JSON.stringify({ auto: S.auto, pace: S.pace, size: S.size, currentId: S.currentId }));
+    else Object.assign(S, JSON.parse(localStorage.getItem("lyricstand.prefs") || "{}"));
+  } catch {}
+}
+
+/* ---------------- Parsing ---------------- */
+const SECTION_RX = /^\s*(\[.*\]|\(.*(chorus|verse|bridge|hook|intro|outro).*\)|(pre-?chorus|chorus|verse|bridge|hook|intro|outro|refrain|मुखड़ा|मुखडा|अंतरा|अन्तरा|कोरस)\s*\d*\s*:?)\s*$/i;
+function parse(text) {
+  const items = [], lines = [];
+  let lastGap = true;
+  for (let raw of String(text || "").replace(/\r/g, "").split("\n")) {
+    raw = raw.replace(/^\s*(?:\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]\s*)+/, ""); // strip .lrc timestamps
+    if (/^\s*\[(ar|ti|al|by|offset|length|re|ve):/i.test(raw)) continue;
+    const t = raw.trim();
+    if (!t) { if (!lastGap) items.push({ kind: "gap" }); lastGap = true; continue; }
+    lastGap = false;
+    if (SECTION_RX.test(t)) { items.push({ kind: "sec", text: t.replace(/^[\[(]|[\])]$|:$/g, "").trim() }); continue; }
+    lines.push(items.length);
+    items.push({ kind: "line", text: t, n: lines.length });
+  }
+  return { items, lines };
+}
+
+/* ---------------- Rendering ---------------- */
+const seg = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+function firstGrapheme(w) {
+  if (seg) { const it = seg.segment(w)[Symbol.iterator]().next(); return it.value ? it.value.segment : w[0]; }
+  return w[0];
+}
+function lineHTMLInto(el, text) {
+  // Wrap words so "first letters" mode can show just their start.
+  for (const part of text.split(/(\s+)/)) {
+    if (!part) continue;
+    if (/^\s+$/.test(part)) { el.append(part); continue; }
+    const m = part.match(/^([^\p{L}\p{M}\p{N}]*)(.*?)([^\p{L}\p{M}\p{N}]*)$/u);
+    if (m[1]) el.append(m[1]);
+    if (m[2]) { const w = document.createElement("span"); w.className = "w"; w.textContent = m[2]; w.dataset.i = firstGrapheme(m[2]); el.append(w); }
+    if (m[3]) el.append(m[3]);
+  }
+}
+
+function currentSong() { return S.songs.find(s => s.id === S.currentId) || null; }
+
+function renderList() {
+  const ul = $("songList"); ul.textContent = "";
+  const mine = S.songs.filter(s => !s.example).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const groups = [["Your songs", mine], ["Examples", S.songs.filter(s => s.example)]];
+  for (const [name, list] of groups) {
+    if (!list.length) continue;
+    const g = document.createElement("li"); g.className = "grp"; g.textContent = name; ul.append(g);
+    for (const s of list) {
+      const li = document.createElement("li");
+      const b = document.createElement("button"); b.type = "button"; b.className = "song";
+      b.setAttribute("aria-current", String(s.id === S.currentId));
+      const t = document.createElement("span"); t.className = "t"; t.textContent = s.title || "Untitled";
+      const a = document.createElement("span"); a.className = "a"; a.textContent = s.artist || (LANGS[s.lang]?.label ?? "");
+      const l = document.createElement("span"); l.className = "lang"; l.textContent = LANGS[s.lang]?.short ?? (s.lang || "").toUpperCase();
+      b.append(t, l, a);
+      b.onclick = () => { selectSong(s.id); $("app").classList.remove("drawer"); };
+      li.append(b); ul.append(li);
+    }
+  }
+}
+
+function renderSong() {
+  const song = currentSong();
+  sheet.textContent = "";
+  $("songMeta").textContent = "";
+  if (!song) {
+    $("songTitle").textContent = "No song yet";
+    const e = document.createElement("div"); e.className = "empty";
+    e.innerHTML = "<h3>Add your first song</h3><p>Paste the lyrics, pick English or Hindi, and press play. The lines will be numbered and scroll at your pace.</p>";
+    sheet.append(e); return;
+  }
+  $("songTitle").textContent = song.title || "Untitled";
+  const meta = $("songMeta");
+  if (song.example) { const c = document.createElement("span"); c.className = "chip example"; c.textContent = "Example"; meta.append(c); }
+  const lc = document.createElement("span"); lc.className = "chip"; lc.textContent = LANGS[song.lang]?.label ?? song.lang; meta.append(lc);
+  if (song.artist) { const a = document.createElement("span"); a.textContent = song.artist; meta.append(a); }
+  if (song.link) { const a = document.createElement("a"); a.href = song.link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "Source ↗"; meta.append(a); }
+
+  const { items, lines } = parse(song.lyrics);
+  S.items = items; S.lines = lines;
+  const lang = song.lang || "en";
+  items.forEach((it, idx) => {
+    if (it.kind === "gap") { const d = document.createElement("div"); d.className = "gap"; sheet.append(d); return; }
+    if (it.kind === "sec") { const d = document.createElement("div"); d.className = "sec"; d.lang = lang; d.textContent = it.text; sheet.append(d); return; }
+    const row = document.createElement("div"); row.className = "ln"; row.lang = lang; row.dataset.n = it.n;
+    const num = document.createElement("span"); num.className = "num"; num.textContent = it.n;
+    const tx = document.createElement("span"); tx.className = "tx"; lineHTMLInto(tx, it.text);
+    const bar = document.createElement("span"); bar.className = "bar";
+    row.append(num, tx, bar);
+    row.onclick = () => {
+      if (S.mode !== "full" && !row.classList.contains("peek")) { row.classList.add("peek"); return; }
+      goTo(it.n, { keepPlaying: true });
+    };
+    sheet.append(row);
+  });
+  if (!lines.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.innerHTML = "<h3>No lyrics in this song yet</h3><p>Press Edit and paste the lyrics.</p>";
+    sheet.append(e);
+  }
+}
+
+function rowFor(n) { return sheet.querySelector(`.ln[data-n="${n}"]`); }
+
+function paint(scroll = true) {
+  const n = S.cur + 1;
+  sheet.querySelectorAll(".ln").forEach(r => {
+    const rn = +r.dataset.n;
+    r.classList.toggle("active", rn === n);
+    r.classList.toggle("near", Math.abs(rn - n) === 1);
+    r.classList.toggle("inloop", !!S.loop && rn >= S.loop.from && rn <= S.loop.to);
+    r.classList.remove("timing");
+  });
+  stage.classList.toggle("following", S.auto);
+  $("fadeTop").hidden = $("fadeBot").hidden = !S.auto;
+  stage.classList.toggle("paused", !S.playing);
+  stage.className = stage.className.replace(/\bmode-\w+/g, "").trim() + " mode-" + S.mode;
+  const row = rowFor(n);
+  if (row && scroll && S.auto) {
+    const top = row.offsetTop - stage.clientHeight * 0.38 + row.offsetHeight / 2;
+    stage.scrollTo({ top: Math.max(0, top) });
+  }
+  // transport
+  const total = S.lines.length;
+  $("playBtn").disabled = !S.auto || !total;
+  $("playBtn").setAttribute("aria-label", S.playing ? "Pause" : "Play");
+  $("playIcon").innerHTML = S.playing ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  $("prevBtn").disabled = !total || S.cur <= 0;
+  $("nextBtn").disabled = !total || S.cur >= total - 1;
+  $("restartBtn").disabled = !total;
+  const chip = $("loopChip");
+  chip.hidden = !S.loop; chip.textContent = "";
+  if (S.loop) {
+    chip.append(S.loop.from === S.loop.to ? `Repeating line ${S.loop.from}` : `Revising lines ${S.loop.from}–${S.loop.to}`);
+    const x = document.createElement("button"); x.type = "button"; x.textContent = "✕"; x.setAttribute("aria-label", "Stop repeating");
+    x.onclick = () => { S.loop = null; paint(false); }; chip.append(x);
+  }
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === S.mode)));
+}
+
+/* ---------------- Playback ---------------- */
+function lineDuration(n) {
+  const it = S.items[S.lines[n - 1]];
+  if (!it) return S.pace * 1000;
+  const words = it.text.split(/\s+/).filter(Boolean).length;
+  const avg = S.lines.reduce((a, i) => a + S.items[i].text.split(/\s+/).filter(Boolean).length, 0) / S.lines.length || 6;
+  const factor = Math.min(1.8, Math.max(0.6, words / avg));
+  const nextItem = S.items[S.lines[n - 1] + 1];
+  const breath = nextItem && nextItem.kind !== "line" ? 0.6 : 0; // a breath before a new verse
+  return (S.pace * factor + breath * S.pace * 0.5) * 1000;
+}
+function schedule() {
+  clearTimeout(timer);
+  if (!S.playing) return;
+  const n = S.cur + 1, row = rowFor(n), ms = lineDuration(n);
+  if (row) { row.style.setProperty("--dur", ms + "ms"); void row.offsetWidth; row.classList.add("timing"); }
+  timer = setTimeout(advance, ms);
+}
+function advance() {
+  const n = S.cur + 1;
+  if (S.loop && n >= S.loop.to) { S.cur = S.loop.from - 1; }
+  else if (S.cur < S.lines.length - 1) { S.cur++; }
+  else { stop(); toast("End of song. Press restart to sing it again."); return; }
+  paint(); schedule();
+}
+function play(withCountdown) {
+  if (!S.lines.length || !S.auto) return;
+  if (withCountdown) return countdown(() => { S.playing = true; paint(); schedule(); keepAwake(true); });
+  S.playing = true; paint(); schedule(); keepAwake(true);
+}
+function stop() {
+  S.playing = false; clearTimeout(timer); cancelCountdown(); paint(false); keepAwake(false);
+}
+function toggle() { S.playing ? stop() : play(S.cur === 0); }
+function restart(from = 1) {
+  stop();
+  S.cur = Math.max(0, Math.min(S.lines.length - 1, from - 1));
+  sheet.querySelectorAll(".peek").forEach(r => r.classList.remove("peek"));
+  paint();
+  if (S.auto) play(true);
+}
+function goTo(n, { keepPlaying = false, startPlaying = false } = {}) {
+  if (!S.lines.length) return;
+  const wasPlaying = S.playing;
+  clearTimeout(timer); cancelCountdown();
+  S.cur = Math.max(0, Math.min(S.lines.length - 1, n - 1));
+  if (S.loop && (n < S.loop.from || n > S.loop.to)) S.loop = null;
+  paint();
+  if ((wasPlaying && keepPlaying) || (startPlaying && S.auto)) { S.playing = true; paint(false); schedule(); }
+  else if (wasPlaying) { S.playing = true; schedule(); }
+}
+function setLoop(a, b) {
+  const total = S.lines.length;
+  a = Math.max(1, Math.min(total, a)); b = Math.max(1, Math.min(total, b));
+  if (a > b) [a, b] = [b, a];
+  S.loop = { from: a, to: b };
+  restart(a);
+}
+function countdown(done) {
+  cancelCountdown();
+  const box = $("countdown"); let k = 3;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const tick = () => {
+    if (k === 0) { box.hidden = true; done(); return; }
+    box.hidden = false; box.innerHTML = `<span>${k}</span>`; k--;
+    countdownTimer = setTimeout(tick, reduce ? 500 : 800);
+  };
+  tick();
+}
+function cancelCountdown() { clearTimeout(countdownTimer); countdownTimer = null; $("countdown").hidden = true; }
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen");
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+
+function setAuto(on) {
+  S.auto = on; $("autoToggle").checked = on;
+  if (!on) stop();
+  paint(); prefs(true);
+}
+function setPace(sec) {
+  S.pace = Math.max(1.5, Math.min(12, Math.round(sec * 2) / 2));
+  $("speed").value = S.pace; $("speedOut").textContent = S.pace.toFixed(1) + " s/line";
+  prefs(true);
+  if (S.playing) schedule();
+}
+function setMode(m) {
+  if (!["full", "initials", "hidden"].includes(m)) return;
+  S.mode = m; sheet.querySelectorAll(".peek").forEach(r => r.classList.remove("peek")); paint(false);
+}
+function setSize(rem) {
+  S.size = Math.max(1, Math.min(3.2, rem));
+  document.documentElement.style.setProperty("--lyric-size", S.size + "rem"); prefs(true);
+  paint();
+}
+
+/* ---------------- Asking: quick commands first, Claude for anything else ---------------- */
+const WORDNUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, first: 1, second: 2, third: 3 };
+function num(s) { return /^\d+$/.test(s) ? +s : WORDNUM[s]; }
+function findSection(name, which) {
+  // returns {from, to} of lines under the matching section label
+  const want = name.toLowerCase();
+  const hits = [];
+  S.items.forEach((it, idx) => {
+    if (it.kind !== "sec") return;
+    if (!it.text.toLowerCase().includes(want)) return;
+    let from = null, to = null;
+    for (let j = idx + 1; j < S.items.length && S.items[j].kind !== "sec"; j++) {
+      if (S.items[j].kind === "line") { from ??= S.items[j].n; to = S.items[j].n; }
+    }
+    if (from) hits.push({ from, to, label: it.text });
+  });
+  return hits[(which || 1) - 1] || hits[0] || null;
+}
+function quickCommand(q) {
+  const s = q.toLowerCase().trim().replace(/[?.!]+$/, "");
+  const total = S.lines.length;
+  let m;
+  if (!total) return null;
+  if (/^(stop|clear|end|cancel)\s+(the\s+)?(loop|repeat|revis\w*|practi[cs]e)/.test(s) || /^no (loop|repeat)/.test(s)) { S.loop = null; paint(false); return "Stopped repeating. Playing straight through."; }
+  if ((m = s.match(/(revise|repeat|loop|practi[cs]e|drill|learn)\D*?(?:lines?\s*)?(\d+|\w+)\s*(?:-|–|—|to|through|and|till|until)\s*(?:line\s*)?(\d+|\w+)/)) && num(m[2]) && num(m[3])) {
+    setLoop(num(m[2]), num(m[3])); return `Revising lines ${S.loop.from}–${S.loop.to} on repeat.`;
+  }
+  if ((m = s.match(/(revise|repeat|loop|practi[cs]e|drill|learn)\s+(?:the\s+)?(?:line\s*)(\d+)$/)) || (m = s.match(/^(repeat|loop)\s+(\d+)$/))) {
+    setLoop(+m[2], +m[2]); return `Repeating line ${S.loop.from}.`;
+  }
+  if ((m = s.match(/(revise|repeat|loop|practi[cs]e|drill|learn|go to|jump to|start (?:from|at)|play|sing)\s+(?:the\s+)?(\w+\s+)?(chorus|verse|bridge|hook|intro|outro|refrain|mukhda|antara|मुखड़ा|अंतरा)\s*(\d+)?/))) {
+    const which = num((m[2] || "").trim()) || (m[4] ? +m[4] : 1);
+    const map = { mukhda: "मुखड़ा", antara: "अंतरा" };
+    const sec = findSection(map[m[3]] || m[3], which);
+    if (!sec) return `I couldn't find a “${m[3]}” label. Add a line like [${m[3][0].toUpperCase() + m[3].slice(1)}] above it in Edit.`;
+    if (/revise|repeat|loop|practi|drill|learn/.test(m[1])) { setLoop(sec.from, sec.to); return `Revising ${sec.label} (lines ${sec.from}–${sec.to}) on repeat.`; }
+    S.loop = null; restart(sec.from); return `Starting ${sec.label} at line ${sec.from}.`;
+  }
+  if (/^(restart|start over|from the (top|start|beginning)|again|reset|start again|sing again|replay)/.test(s) || /^restart( the)?( song| lyrics)?$/.test(s)) {
+    S.loop = null; restart(1); return "Restarting from line 1.";
+  }
+  if ((m = s.match(/(?:start|restart|begin|resume|play|go|jump|skip|continue|sing)\s*(?:it\s*)?(?:from|at|to)?\s*(?:line\s*)?(\d+)$/)) || (m = s.match(/^(?:line\s*)(\d+)$/))) {
+    const n = +m[1]; if (n < 1 || n > total) return `There are ${total} lines. Pick a number from 1 to ${total}.`;
+    restart(n); return `Starting from line ${n}.`;
+  }
+  if (/^(slower|slow down|more time)/.test(s)) { setPace(S.pace + 1); return `Slower: ${S.pace.toFixed(1)} s per line.`; }
+  if (/^(faster|speed up|quicker)/.test(s)) { setPace(S.pace - 1); return `Faster: ${S.pace.toFixed(1)} s per line.`; }
+  if (/^(pause|stop|wait|hold)$/.test(s)) { stop(); return "Paused."; }
+  if (/^(play|resume|continue|go)$/.test(s)) { if (!S.auto) setAuto(true); play(false); return "Playing."; }
+  if (/^(no scroll|stop scrolling|manual|auto[- ]?scroll off|turn off auto[- ]?scroll)/.test(s)) { setAuto(false); return "Auto-scroll off. Scroll and tap lines yourself."; }
+  if (/^(scroll|auto[- ]?scroll( on)?|turn on auto[- ]?scroll)$/.test(s)) { setAuto(true); return "Auto-scroll on. Press play."; }
+  if (/(test me|hide (the )?(lyrics|lines|words)|from memory|hidden)/.test(s)) { setMode("hidden"); return "Lines hidden. Tap a line to peek."; }
+  if (/(first letters?|initials|hints?)/.test(s) && !/what|why|how/.test(s)) { setMode("initials"); return "Showing first letters only."; }
+  if (/^(show (all|everything|the lyrics|full)|full lyrics|unhide)/.test(s)) { setMode("full"); return "Showing the full lyrics."; }
+  return null;
+}
+
+const TOOLS = [
+  { name: "restart", description: "Restart the lyrics from line 1 with a 3-2-1 countdown. Returns 'ok'.", execute: () => { S.loop = null; restart(1); return "ok"; } },
+  { name: "start_from_line", description: "Jump to a numbered line and start playing from it. Returns 'ok' or an error.", inputSchema: { type: "object", properties: { line: { type: "integer" } }, required: ["line"] },
+    execute: ({ line }) => { const n = Number(line); if (!(n >= 1 && n <= S.lines.length)) throw new Error("line must be 1-" + S.lines.length); restart(n); return "ok"; } },
+  { name: "revise_lines", description: "Loop a range of numbered lines over and over so the singer can practise them. Use from==to for one line. Returns 'ok'.", inputSchema: { type: "object", properties: { from: { type: "integer" }, to: { type: "integer" } }, required: ["from", "to"] },
+    execute: ({ from, to }) => { setLoop(Number(from), Number(to)); return "ok"; } },
+  { name: "stop_revising", description: "Stop looping and play straight through.", execute: () => { S.loop = null; paint(false); return "ok"; } },
+  { name: "set_pace", description: "Set seconds each line stays on screen (1.5 to 12).", inputSchema: { type: "object", properties: { seconds: { type: "number" } }, required: ["seconds"] },
+    execute: ({ seconds }) => { setPace(Number(seconds)); return "ok"; } },
+  { name: "set_practice_mode", description: "Memorisation aid: 'full' shows all words, 'initials' shows first letters only, 'hidden' blurs every line until tapped.", inputSchema: { type: "object", properties: { mode: { type: "string", enum: ["full", "initials", "hidden"] } }, required: ["mode"] },
+    execute: ({ mode }) => { setMode(String(mode)); return "ok"; } },
+];
+
+let askCtl = null;
+async function ask(q) {
+  const box = $("answer"); box.hidden = false; box.textContent = "";
+  const who = document.createElement("span"); who.className = "who"; who.textContent = "You asked: " + q;
+  const body = document.createElement("span"); box.append(who, body);
+  const quick = quickCommand(q);
+  if (quick) { body.textContent = quick; return; }
+
+  const song = currentSong();
+  const sample = window.claude && typeof window.claude.use === "function" ? await window.claude.use("sample").catch(() => null) : null;
+  if (!sample) {
+    body.textContent = "Try: “restart”, “start from line 9”, “revise lines 5–8”, “go to the chorus”, “slower”, “test me”. Open this page on claude.ai to ask free-form questions about the lyrics.";
+    return;
+  }
+  if (!song || !S.lines.length) { body.textContent = "Add some lyrics first, then ask about them."; return; }
+  const numbered = S.items.map(it => it.kind === "line" ? `${it.n}. ${it.text}` : it.kind === "sec" ? `[${it.text}]` : "").join("\n");
+  const rules = `You are a singing and lyrics-learning coach inside an app called Lyric Stand.
+The singer is learning "${song.title}"${song.artist ? " by " + song.artist : ""}. Language: ${LANGS[song.lang]?.label ?? song.lang}.
+The current line is ${S.cur + 1} of ${S.lines.length}. Pace: ${S.pace}s per line. ${S.loop ? `Currently revising lines ${S.loop.from}-${S.loop.to}.` : ""}
+The singer's lyrics, numbered:
+${numbered}
+
+Use the tools to control playback when the singer asks to restart, jump, revise or loop lines, change pace or test their memory.
+When they ask about meaning, pronunciation, transliteration (for Hindi, give Roman-script transliteration), translation, or how to memorise, answer briefly and refer to line numbers.
+Reply in 1-4 short sentences, plain text, no markdown headings. Do not write out lyrics beyond the lines you are asked about.`;
+  askCtl?.abort(); askCtl = new AbortController();
+  body.textContent = "Thinking…";
+  $("askBtn").disabled = true;
+  try {
+    const { text, truncated } = await sample([{ role: "user", content: rules + "\n\nSinger: " + q }], {
+      signal: askCtl.signal, tools: TOOLS, cache: false, modelTier: "quick",
+      onText: ({ text }) => { body.textContent = text; },
+    });
+    body.textContent = text + (truncated ? " …" : "");
+  } catch (e) {
+    if (e && e.code === "cancelled") return;
+    body.textContent = e?.code === "not_granted" ? "Asking Claude is turned off for this page. Quick commands like “restart” or “revise lines 3–6” still work."
+      : e?.code === "rate_limited" ? "Too many questions in a row. Wait a moment and ask again."
+      : "Couldn't reach Claude just now. Quick commands like “restart” still work.";
+  } finally { $("askBtn").disabled = false; }
+}
+
+/* ---------------- Editor ---------------- */
+let editingId = null, langTouched = false;
+function openEditor(song) {
+  editingId = song && !song.example ? song.id : null;
+  $("edHeading").textContent = editingId ? "Edit song" : song ? "Save a copy of this example" : "Add a song";
+  $("edTitle").value = song?.title ?? "";
+  $("edArtist").value = song?.example ? "" : (song?.artist ?? "");
+  $("edLang").value = song?.lang ?? "en";
+  $("edLink").value = song?.link ?? "";
+  $("edLyrics").value = song?.lyrics ?? "";
+  $("edLyrics").lang = $("edLang").value;
+  $("edDelete").hidden = !editingId;
+  langTouched = !!song;
+  syncLink();
+  $("editor").showModal();
+  $("edTitle").focus();
+}
+function syncLink() {
+  const v = $("edLink").value.trim(), a = $("edOpen");
+  let ok = false; try { ok = /^https?:$/.test(new URL(v).protocol); } catch {}
+  a.hidden = !ok; if (ok) a.href = v;
+}
+async function saveEditor() {
+  const lyrics = $("edLyrics").value.replace(/\r/g, "");
+  const song = {
+    id: editingId || "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title: $("edTitle").value.trim() || "Untitled",
+    artist: $("edArtist").value.trim(),
+    lang: $("edLang").value,
+    link: $("edLink").value.trim(),
+    lyrics, updatedAt: Date.now(),
+  };
+  const i = S.songs.findIndex(s => s.id === song.id);
+  if (i >= 0) S.songs[i] = song; else S.songs.unshift(song);
+  S.currentId = song.id; prefs(true);
+  renderList(); selectSong(song.id);
+  try { await Store.save(song); toast("Saved"); }
+  catch (e) { toast(e?.code === "quota_exceeded" ? "Storage is full. Delete a song you no longer need." : "Couldn't save. Check your connection and try again."); }
+}
+async function deleteCurrent() {
+  if (!editingId) return;
+  const id = editingId;
+  S.songs = S.songs.filter(s => s.id !== id);
+  try { await Store.remove(id); } catch {}
+  $("editor").close();
+  selectSong(S.songs[0]?.id ?? null); renderList(); toast("Deleted");
+}
+
+/* ---------------- Misc ---------------- */
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+
+function selectSong(id) {
+  stop();
+  S.currentId = id; S.cur = 0; S.loop = null; prefs(true);
+  renderList(); renderSong(); stage.scrollTop = 0; paint();
+  $("answer").hidden = true;
+}
+
+function mergeSongs(mine) {
+  S.songs = [...mine, ...EXAMPLES];
+  if (!S.songs.some(s => s.id === S.currentId)) S.currentId = (mine[0] || EXAMPLES[0]).id;
+}
+
+/* ---------------- Wire up ---------------- */
+for (const [k, v] of Object.entries(LANGS)) { const o = document.createElement("option"); o.value = k; o.textContent = v.label; $("edLang").append(o); }
+
+$("addBtn").onclick = () => openEditor(null);
+$("editBtn").onclick = () => openEditor(currentSong());
+$("edCancel").onclick = () => $("editor").close();
+$("edDelete").onclick = deleteCurrent;
+$("edForm").addEventListener("submit", e => { e.preventDefault(); $("editor").close(); saveEditor(); });
+$("edLink").addEventListener("input", syncLink);
+$("edLang").addEventListener("change", () => { langTouched = true; $("edLyrics").lang = $("edLang").value; });
+$("edLyrics").addEventListener("input", () => {
+  // Auto-pick Hindi when Devanagari is pasted into a new song.
+  if (!langTouched && $("edLyrics").value.length > 20) { $("edLang").value = detectLang($("edLyrics").value); $("edLyrics").lang = $("edLang").value; }
+});
+$("edLyrics").addEventListener("dragover", e => e.preventDefault());
+$("edLyrics").addEventListener("drop", e => {
+  const f = e.dataTransfer?.files?.[0]; if (!f) return;
+  e.preventDefault();
+  const r = new FileReader();
+  r.onload = () => {
+    $("edLyrics").value = String(r.result);
+    if (!$("edTitle").value) $("edTitle").value = f.name.replace(/\.(txt|lrc)$/i, "");
+    $("edLang").value = detectLang(String(r.result)); $("edLyrics").lang = $("edLang").value;
+  };
+  r.readAsText(f);
+});
+
+$("playBtn").onclick = toggle;
+$("restartBtn").onclick = () => restart(S.loop ? S.loop.from : 1);
+$("prevBtn").onclick = () => goTo(S.cur, { keepPlaying: true });
+$("nextBtn").onclick = () => goTo(S.cur + 2, { keepPlaying: true });
+$("autoToggle").onchange = e => setAuto(e.target.checked);
+$("speed").oninput = e => setPace(+e.target.value);
+document.querySelectorAll(".seg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+$("smaller").onclick = () => setSize(S.size - 0.2);
+$("bigger").onclick = () => setSize(S.size + 0.2);
+$("menuBtn").onclick = () => $("app").classList.add("drawer");
+$("scrim").onclick = () => $("app").classList.remove("drawer");
+$("askForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const q = $("askInput").value.trim(); if (!q) return;
+  $("askInput").value = ""; ask(q);
+});
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea, select, dialog, button, a")) return;
+  if (e.key === " ") { e.preventDefault(); toggle(); }
+  else if (e.key === "r" || e.key === "R") restart(S.loop ? S.loop.from : 1);
+  else if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); goTo(S.cur + 2, { keepPlaying: true }); }
+  else if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); goTo(S.cur, { keepPlaying: true }); }
+  else if (e.key === "/") { e.preventDefault(); $("askInput").focus(); }
+});
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.playing) keepAwake(true); });
+
+/* ---------------- Boot ---------------- */
+prefs(false);
+$("autoToggle").checked = S.auto;
+setPace(S.pace);
+document.documentElement.style.setProperty("--lyric-size", S.size + "rem");
+mergeSongs(Store.readLocal());
+renderList(); renderSong(); paint();
+
+Store.connect(mine => {
+  const before = S.currentId;
+  // first time on the account store: move songs saved in this browser across
+  const local = Store.readLocal();
+  if (local.length && Store.cloud) {
+    for (const s of local) if (!mine.some(m => m.id === s.id)) Store.save(s).catch(() => {});
+    Store.writeLocal([]);
+  }
+  const merged = [...mine];
+  for (const s of local) if (!merged.some(m => m.id === s.id)) merged.push(s);
+  mergeSongs(merged);
+  renderList();
+  if (S.currentId !== before || !S.playing) { const cur = S.cur; renderSong(); S.cur = Math.min(cur, Math.max(0, S.lines.length - 1)); paint(false); }
+}).then(ok => {
+  $("storeNote").textContent = ok ? "Songs are saved to your Claude account, so they follow you to other devices." : "Songs are saved in this browser.";
+});
+})();
+</script>
