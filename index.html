@@ -241,6 +241,8 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
 .res button { grid-row: 1 / span 2; grid-column: 2; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.78rem; letter-spacing: .06em; text-transform: uppercase; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.ed-details { display: flex; flex-direction: column; gap: 12px; }
+#fManual { align-self: flex-start; color: var(--muted); font-size: 0.85rem; padding-inline: 0; text-decoration: underline; }
 .row3 { display: grid; grid-template-columns: 1.4fr 1fr 0.6fr; gap: 12px; }
 .filled { animation: flash 1.2s ease-out; }
 @keyframes flash { from { background: var(--accent-soft); } }
@@ -362,6 +364,7 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
       <div class="seg" role="group" aria-label="How to find the song">
         <button type="button" data-find="title" aria-pressed="true">I know the title</button>
         <button type="button" data-find="line" aria-pressed="false">I remember a line</button>
+        <button type="button" data-find="link" aria-pressed="false">From a link</button>
       </div>
       <div class="findrow" id="findTitleRow">
         <input id="fTitle" placeholder="Song title, e.g. Tum Hi Ho" aria-label="Song title to search">
@@ -373,9 +376,15 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
         <button class="btn mic" type="button" id="fMic" aria-pressed="false" hidden title="Say the line out loud">🎤 Say it</button>
         <button class="btn primary" type="button" id="fLineBtn">Find song</button>
       </div>
+      <div class="findrow" id="findLinkRow" hidden>
+        <input id="fLink" type="url" placeholder="Paste a link: YouTube, Spotify, or a lyrics page" aria-label="Link to the song">
+        <button class="btn primary" type="button" id="fLinkBtn">Get lyrics</button>
+      </div>
       <p class="fstatus" id="fStatus" aria-live="polite">Search the internet for the lyrics, artist, singer and year.</p>
       <ul class="results" id="fResults"></ul>
+      <button class="btn ghost" type="button" id="fManual">Type or paste the lyrics myself instead</button>
     </section>
+    <div id="edDetails" class="ed-details">
     <div class="divider">Song details</div>
     <div class="row">
       <div class="field"><label for="edTitle">Song title</label><input id="edTitle" required maxlength="120"></div>
@@ -397,6 +406,7 @@ dialog::backdrop { background: rgb(10 8 20 / .45); }
       <label for="edLyrics">Lyrics</label>
       <textarea id="edLyrics" placeholder="Paste the lyrics here, one sung line per line.&#10;&#10;[Chorus]  ← lines in brackets become section labels (not numbered)&#10;Leave a blank line between verses."></textarea>
       <p class="hint" id="edHint">Found by the search above, or paste them yourself. You can also drop a .txt or .lrc file here.</p>
+    </div>
     </div>
     <div class="edactions">
       <button class="btn ghost danger" id="edDelete" type="button" hidden>Delete song</button>
@@ -885,6 +895,7 @@ function openEditor(song) {
   $("edYear").value = song?.year ?? "";
   editSource = song?.source ?? "";
   resetFinder(!song);
+  showDetails(!!song);
   $("edLang").value = song?.lang ?? "en";
   $("edLink").value = song?.link ?? "";
   $("edLyrics").value = song?.lyrics ?? "";
@@ -895,12 +906,15 @@ function openEditor(song) {
   $("editor").showModal();
   $("edTitle").focus();
 }
+function showDetails(on) {
+  $("edDetails").hidden = !on; $("edSave").hidden = !on; $("fManual").hidden = on;
+}
 function syncLink() {
   const v = $("edLink").value.trim(), a = $("edOpen");
   let ok = false; try { ok = /^https?:$/.test(new URL(v).protocol); } catch {}
   a.hidden = !ok; if (ok) a.href = v;
 }
-async function saveEditor() {
+async function saveEditor(note) {
   const lyrics = $("edLyrics").value.replace(/\r/g, "");
   const song = {
     id: editingId || "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -918,7 +932,7 @@ async function saveEditor() {
   if (i >= 0) S.songs[i] = song; else S.songs.unshift(song);
   S.currentId = song.id; prefs(true);
   renderList(); selectSong(song.id);
-  try { await Store.save(song); toast("Saved"); }
+  try { await Store.save(song); toast(note || "Saved"); }
   catch (e) { toast(e?.code === "quota_exceeded" ? "Storage is full. Delete a song you no longer need." : "Couldn't save. Check your connection and try again."); }
 }
 async function deleteCurrent() {
@@ -936,7 +950,10 @@ async function deleteCurrent() {
    line and fills in singers and year; it never writes lyrics itself. */
 const LRCLIB = "https://lrclib.net/api";
 const MB = "https://musicbrainz.org/ws/2";
-let findCtl = null, recog = null;
+let findCtl = null, recog = null, pendingLink = "";
+// The full app online: there the lyrics load by themselves (claude.ai doesn't let pages go online).
+const APP_URL = "https://ysharma31.github.io/learn-the-lyrics/";
+const onClaude = () => !!(window.claude && typeof window.claude.use === "function");
 
 async function getJSON(url, signal) {
   const ctl = new AbortController();
@@ -967,15 +984,17 @@ function resetFinder(show) {
   findCtl?.abort(); stopMic();
   $("finder").hidden = !show;
   $("fResults").textContent = "";
-  $("fTitle").value = $("fArtist").value = $("fLine").value = "";
+  $("fTitle").value = $("fArtist").value = $("fLine").value = $("fLink").value = ""; pendingLink = "";
   setStatus("Search the internet for the lyrics, artist, singer and year.");
 }
 function setFindMode(m) {
   document.querySelectorAll("[data-find]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.find === m)));
-  $("findTitleRow").hidden = m !== "title"; $("findLineRow").hidden = m !== "line";
+  $("findTitleRow").hidden = m !== "title"; $("findLineRow").hidden = m !== "line"; $("findLinkRow").hidden = m !== "link";
   $("fResults").textContent = "";
-  setStatus(m === "title" ? "Search the internet for the lyrics, artist, singer and year." : "Type or say any line you remember. Claude will work out which song it is.");
-  (m === "title" ? $("fTitle") : $("fLine")).focus();
+  setStatus({ title: "Search the internet for the lyrics, artist, singer and year.",
+    line: "Type or say any line you remember, and the app works out which song it is.",
+    link: "Paste a YouTube, Spotify or lyrics-site link. The app reads which song it is and loads the lyrics." }[m]);
+  ({ title: $("fTitle"), line: $("fLine"), link: $("fLink") })[m].focus();
 }
 
 /* LRCLIB rows -> one candidate per distinct song (title + artist) */
@@ -1016,10 +1035,9 @@ async function searchByTitle() {
       setStatus("Can't reach the lyrics site from here. Asking Claude which song you mean…");
       const ids = await identifyWithClaude({ title, artist }, signal);
       if (signal.aborted) return;
-      if (ids?.length) { showResults(ids, "Pick your song. Claude will fill in the details; paste the lyrics from the web."); return; }
+      if (ids?.length) { showResults(ids, "Pick your song to fill in its details. The lyrics themselves only load in the full app."); return; }
     }
-    setStatus("Couldn't reach the lyrics site. Paste the lyrics yourself:", { err: true, link: { href: webSearchLink(title, artist), text: "Search the web ↗" } });
-    if (!$("edTitle").value) fill("edTitle", title);
+    offlineStatus();
     return;
   }
   if (!cands.length) {
@@ -1129,11 +1147,81 @@ async function choose(c) {
   fill("edAlbum", cl?.album, { onlyIfEmpty: true });
   if (cl?.artist && !$("edArtist").value) fill("edArtist", cl.artist);
 
+  if (pendingLink) { $("edLink").value = pendingLink; syncLink(); }
+  if (lyrics) {
+    $("editor").close();
+    await saveEditor(`Added “${$("edTitle").value}”. Lyrics loaded from LRCLIB.`);
+    return;
+  }
+  showDetails(true);
   const sources = [lyrics ? "lyrics from LRCLIB" : "", mb?.year || mb?.artist ? "release info from MusicBrainz" : "", c.source === "Claude" || cl ? "credits suggested by Claude" : ""].filter(Boolean);
   if (lyrics) setStatus(`Filled in: ${sources.join(", ")}. Check the details, then save.`);
-  else setStatus(lyricsNote === "offline" ? "Filled in the song details. The lyrics site can't be reached from here, so paste the lyrics:" : "Filled in the song details, but no lyrics were found online. Paste them:",
+  else if (lyricsNote === "offline") offlineStatus("Filled in the song details. ");
+  else setStatus("Filled in the song details, but LRCLIB has no lyrics for this song yet. Paste them below, or try another version.",
     { err: true, link: { href: webSearchLink(c.title, c.artist || c.singer), text: "Search the web ↗" } });
-  if (!$("edLink").value && !lyrics) { $("edLink").value = webSearchLink(c.title, c.artist || c.singer); syncLink(); }
+}
+
+function offlineStatus(prefix = "") {
+  if (onClaude()) setStatus(prefix + "Inside claude.ai the page isn't allowed to go online, so lyrics can't load here. The full app loads them by itself:",
+    { err: true, link: { href: APP_URL, text: "Open the full app ↗" } });
+  else setStatus(prefix + "Couldn't reach the lyrics site. Check your internet connection and try again.", { err: true });
+}
+
+/* A link -> which song it is -> lyrics. YouTube and Spotify links are read through noembed.com;
+   for lyrics sites the song and artist are read from the address itself. */
+const JUNK = /\b(official( music)?( video| audio| lyric video)?|lyric(al)? video|lyrics?|lyrical|full (video )?song|video song|hd|4k|remaster(ed)?)\b/gi;
+function cleanTitle(t) {
+  return String(t || "").replace(/\(.*?\)|\[.*?\]|\|.*$|#\S+/g, " ").replace(JUNK, " ").replace(/[“”"']/g, "").replace(/\s+/g, " ").trim();
+}
+function songFromUrl(u) {
+  const parts = u.pathname.split("/").filter(Boolean).map(x => decodeURIComponent(x).replace(/\.(html?|php|aspx?)$/i, ""));
+  const host = u.hostname.replace(/^www\.|^m\./, "");
+  if (host.endsWith("azlyrics.com") && parts[0] === "lyrics" && parts[2]) return { title: parts[2], artist: parts[1] };
+  const last = (parts[parts.length - 1] || "").replace(/-?lyrics?-?/gi, "-").replace(/[-_+]+/g, " ").replace(/\b\d{3,}\b/g, "").trim();
+  return { q: last };
+}
+async function searchByLink() {
+  const raw = $("fLink").value.trim();
+  let u; try { u = new URL(raw); if (!/^https?:$/.test(u.protocol)) throw 0; } catch { setStatus("That doesn't look like a web link. It should start with https://", { err: true }); return; }
+  findCtl?.abort(); findCtl = new AbortController(); const signal = findCtl.signal;
+  $("fResults").textContent = ""; setStatus("Reading the link…");
+  pendingLink = raw;
+  const host = u.hostname.replace(/^www\.|^m\./, "");
+  let query = null;
+  try {
+    if (/(^|\.)youtube\.com$|^youtu\.be$|(^|\.)spotify\.com$|(^|\.)soundcloud\.com$/.test(host)) {
+      const o = await getJSON("https://noembed.com/embed?url=" + encodeURIComponent(raw), signal);
+      if (o.error || !o.title) throw new Error("no title");
+      const t = cleanTitle(o.title);
+      // "Artist - Title" is the usual video naming; Spotify gives the title and author separately
+      const dash = t.split(/\s[-–—:]\s/);
+      query = dash.length > 1 ? { title: dash.slice(1).join(" ").trim(), artist: dash[0].trim() }
+        : host.includes("spotify") && o.author_name ? { title: t, artist: o.author_name } : { q: t };
+    } else query = songFromUrl(u);
+  } catch (e) {
+    if (signal.aborted) return;
+    if (e instanceof TypeError || e?.name === "AbortError") { offlineStatus(); return; }
+    setStatus("Couldn't read which song that link is. Try searching by title instead.", { err: true }); return;
+  }
+  if (signal.aborted) return;
+  const label = query.q || `${query.title} by ${query.artist}`;
+  if (!label.trim()) { setStatus("Couldn't read which song that link is. Try searching by title instead.", { err: true }); return; }
+  setStatus(`Looking up “${label}”…`);
+  let cands = [];
+  try {
+    if (query.q) cands = await lrclibSearch({ q: query.q }, signal);
+    else {
+      cands = await lrclibSearch(query, signal);
+      // "Song - Film" titles: try the whole thing, then each half as the song title
+      if (!cands.length) cands = await lrclibSearch({ q: `${query.artist} ${query.title}` }, signal);
+      if (!cands.length) cands = await lrclibSearch({ title: query.artist }, signal);
+      if (!cands.length) cands = await lrclibSearch({ title: query.title }, signal);
+    }
+  } catch { if (signal.aborted) return; offlineStatus(); return; }
+  if (signal.aborted) return;
+  if (!cands.length) { setStatus(`Found “${label}” but no lyrics for it on LRCLIB. Try searching by title.`, { err: true }); return; }
+  if (cands.length === 1) { choose(cands[0]); return; }
+  showResults(cands.slice(0, 8), `Which of these is the song at that link?`);
 }
 
 async function musicBrainzInfo(c, signal) {
@@ -1203,9 +1291,11 @@ $("editor").addEventListener("close", () => { findCtl?.abort(); stopMic(); });
 document.querySelectorAll("[data-find]").forEach(b => b.onclick = () => setFindMode(b.dataset.find));
 $("fTitleBtn").onclick = searchByTitle;
 $("fLineBtn").onclick = searchByLine;
+$("fLinkBtn").onclick = searchByLink;
+$("fManual").onclick = () => { showDetails(true); $("edTitle").focus(); };
 $("fMic").hidden = !SR;
 $("fMic").onclick = () => recog ? stopMic() : startMic();
-for (const [id, fn] of [["fTitle", searchByTitle], ["fArtist", searchByTitle], ["fLine", searchByLine]])
+for (const [id, fn] of [["fTitle", searchByTitle], ["fArtist", searchByTitle], ["fLine", searchByLine], ["fLink", searchByLink]])
   $(id).addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fn(); } });
 $("edDelete").onclick = deleteCurrent;
 $("edForm").addEventListener("submit", e => { e.preventDefault(); $("editor").close(); saveEditor(); });
