@@ -19,7 +19,7 @@ Songs are saved to your Claude account when the page is opened as a claude.ai ar
 | | Opened as a normal web page (GitHub Pages, or the file) | Opened on claude.ai |
 |---|---|---|
 | Lyrics load by themselves (title, line or link) | Yes | No: the page can't go online there. It links to the full app |
-| Find a song from a line | Keyword search only | Yes, Claude recognises the song |
+| Find a song from a line | Yes, when the line contains part of the title (choruses usually do) | Yes, Claude recognises the song from any line |
 | Say a line out loud | Yes, in Chrome, Edge or Safari | No microphone access |
 | Ask box questions | Commands only | Commands and free-form questions |
 | Saving songs | In this browser | In your Claude account |

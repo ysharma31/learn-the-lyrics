@@ -1057,17 +1057,68 @@ async function searchByLine() {
   const sample = await claudeSample();
   if (sample) cands = (await identifyWithClaude({ line }, signal)) || [];
   if (signal.aborted) return;
+  let netErr = false;
   if (!cands.length) {
-    // Without Claude, fall back to the lyrics site's keyword search.
-    try { cands = (await lrclibSearch({ q: line }, signal)).slice(0, 8); } catch { if (signal.aborted) return; }
+    // Without Claude: search the lyrics site with pieces of the line, then keep songs whose lyrics contain it.
+    try { cands = await lineSearch(line, signal); } catch { if (signal.aborted) return; netErr = true; }
   }
   if (signal.aborted) return;
   if (!cands.length) {
-    setStatus(sample ? "Couldn't place that line. Try another line, or a few more words." : "Couldn't place that line. Recognising a song from a line works best when this page is opened on claude.ai.",
+    if (netErr) { offlineStatus(); return; }
+    setStatus("Couldn't find a song with that line. Try a line from the chorus (it often has the song's title in it), or check the words.",
       { err: true, link: { href: "https://www.google.com/search?q=" + encodeURIComponent(`"${line}" lyrics`), text: "Search the web ↗" } });
     return;
   }
   showResults(cands, cands.length === 1 ? "Is this the song?" : "Which of these is it?");
+}
+
+/* Finding a song from a line without Claude.
+   LRCLIB's search only looks at titles, artists and albums, not lyrics. So search with the whole line
+   and with shorter runs of its words (a chorus line usually contains the title), then keep only the
+   songs whose lyrics really contain the line, best match first. */
+const STOP = new Set("a an the and or but to of in on at for with is it i you me my we he she they be am are was do so oh ooh yeah na la hey ho hai ka ki ke ko se mein main tu tum hum na ye wo".split(" "));
+function linePhrases(line) {
+  const w = norm(line).split(" ").filter(Boolean);
+  const out = [], seen = new Set();
+  const add = p => { if (p && !seen.has(p)) { seen.add(p); out.push(p); } };
+  add(w.join(" "));
+  for (let n = Math.min(5, w.length - 1); n >= 2; n--) {
+    for (let i = 0; i + n <= w.length; i++) {
+      const piece = w.slice(i, i + n);
+      if (piece.every(x => STOP.has(x))) continue; // "you and me" alone matches thousands of songs
+      add(piece.join(" "));
+    }
+  }
+  return out.slice(0, 14);
+}
+function lineScore(line, lyrics) {
+  // Share of the line's word pairs found in the lyrics (copes with a word or two misremembered).
+  const lw = norm(line).split(" ").filter(Boolean);
+  const text = " " + norm(lyrics).replace(/\s+/g, " ") + " ";
+  if (lw.length < 2) return text.includes(" " + lw[0] + " ") ? 1 : 0;
+  let hit = 0;
+  for (let i = 0; i < lw.length - 1; i++) if (text.includes(" " + lw[i] + " " + lw[i + 1] + " ")) hit++;
+  return hit / (lw.length - 1);
+}
+async function lineSearch(line, signal) {
+  const phrases = linePhrases(line);
+  const found = new Map();
+  let ok = 0, failed = 0;
+  for (let i = 0; i < phrases.length; i += 3) {
+    setStatus(`Searching the lyrics site… (${Math.min(i + 3, phrases.length)} of ${phrases.length} tries)`);
+    const batch = await Promise.all(phrases.slice(i, i + 3).map(q =>
+      lrclibSearch({ q }, signal).then(r => (ok++, r), () => (failed++, []))));
+    if (signal.aborted) return [];
+    for (const c of batch.flat()) {
+      const key = norm(c.title) + "|" + norm(c.artist);
+      if (found.has(key)) continue;
+      const score = lineScore(line, c.lyrics);
+      if (score >= 0.6) found.set(key, { ...c, score, confidence: score < 0.85 ? "low" : "high" });
+    }
+    if ([...found.values()].some(c => c.score >= 0.95)) break; // an exact match: stop searching
+  }
+  if (!ok && failed) throw new Error("offline");
+  return [...found.values()].sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
 /* Claude names candidate songs: metadata only, never lyrics. */
